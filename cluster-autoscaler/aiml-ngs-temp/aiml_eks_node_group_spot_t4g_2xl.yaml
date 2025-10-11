@@ -1,0 +1,46 @@
+region: ap-south-1
+
+# EKS Cluster/name details
+cluster_name: doubtsolver
+account: '667706656695'
+environment: devo
+
+# Node group basic config
+node_group_name: t4g-2xl
+node_min_size: 0
+node_max_size: 100
+node_desired_size: 0
+node_max_unavailable: 1
+
+# Network/subnets (for nodegroup)
+subnet_ids: ["subnet-073e1a4782096a785"]
+node_sgs: ["sg-090e0c2f8e1675ac0", "sg-09895ead50c38cf27"]
+
+# Security/IAM and aws managed kms key for ebs encryption
+node_role_arn: arn:aws:iam::667706656695:role/eksctl-doubtsolver-nodegroup-doubt-NodeInstanceRole-Pm0BNmhyAXfS
+aws_kms_key_arn: arn:aws:kms:ap-south-1:667706656695:key/99c2e238-5bb2-4795-a88b-ee8af215cd2c
+pem_key: doubtsolver
+
+node_group_labels:
+  node_type: app
+
+node_capacity: SPOT
+
+allow_taints: true
+node_taints:
+  - key: deployToArch
+    value: "arm64"
+    effect: NO_SCHEDULE
+
+# Instance config
+node_instance_types: ["t4g.2xlarge"]
+node_ami_type: BOTTLEROCKET_ARM_64
+node_disk_size: 100
+device_name: /dev/xvdb
+force_update_version: false
+
+launch_template_metadata_options:
+  HttpEndpoint: enabled
+  HttpTokens: required
+  HttpPutResponseHopLimit: 2
+  InstanceMetadataTags: enabled
