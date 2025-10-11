@@ -9,6 +9,9 @@
 
 for cluster autoscaler
 ```bash
-# find out already isntalled cluster autoscaler components 
+# find out already isntalled cluster autoscaler components
+configure aws profile first
+create source venv for python
+python3 file.py 
 kubectl get all -n kube-system | grep -i "autoscaler"
 ```
