@@ -16,3 +16,4 @@ python3 install_cluster_autoscaler.py
 python3 ng.py
 kubectl get all -n kube-system | grep -i "autoscaler"
 ```
+<img width="1122" height="788" alt="image" src="https://github.com/user-attachments/assets/6ec78290-ea45-46b0-99bc-057b7c0d33c0" />
