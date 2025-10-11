@@ -12,6 +12,7 @@ for cluster autoscaler
 # find out already isntalled cluster autoscaler components
 configure aws profile first
 create source venv for python
-python3 file.py 
+python3 install_cluster_autoscaler.py
+python3 ng.py
 kubectl get all -n kube-system | grep -i "autoscaler"
 ```
