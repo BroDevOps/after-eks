@@ -1,0 +1,154 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: common-video-shorts-canary-main
+    app.kubernetes.io/instance: adda-prod-deployment
+  name: common-video-shorts-canary-main
+  namespace: production
+spec:
+  progressDeadlineSeconds: 600
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: common-video-shorts-canary-main
+  strategy:
+    rollingUpdate:
+      maxSurge: 10%
+      maxUnavailable: 10%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: common-video-shorts-canary-main
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values:
+                      - amd64
+
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: common-video-shorts-canary-main
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - env:
+            - name: ELASTIC_APM_CAPTURE_BODY
+              value: all
+            - name: ELASTIC_APM_SANITIZE_FIELD_NAMES
+              value: "password, passwd, pwd, secret, key, session, set-cookie"
+            - name: ELASTIC_APM_ENVIRONMENT
+              value: production-mumbai
+            # - name: ELASTIC_APM_SERVER_URLS
+            #   value: http://apmdash.adda247.com:80
+            - name: JAVA_OPTS
+              value: -javaagent:/opt/apm-agent.jar -XX:+UseContainerSupport -XX:MaxRAMPercentage=50.0 -XX:InitialRAMPercentage=40.0 -XX:ParallelGCThreads=2 -Djava.security.egd=file:/dev/./urandom -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+ParallelRefProcEnabled -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:+UnlockExperimentalVMOptions -XX:+UseStringDeduplication
+            - name: ELASTIC_APM_SERVICE_NAME
+              value: common-video-shorts-canary-main
+          image: 3344555444875.dkr.ecr.ap-south-1.amazonaws.com/common-video-shorts:224-master-production-01-12_05-54
+          imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - "/bin/sh"
+                  - "-c"
+                  - "sleep 90"
+          livenessProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /video-short-ws/service/health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 90
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 30
+          name: common-video-shorts-canary-main
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          readinessProbe:
+            failureThreshold: 30
+            httpGet:
+              path: /video-short-ws/service/health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 90
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 30
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1200Mi
+            requests:
+              cpu: 500m
+              memory: 600Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 110
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: common-video-shorts-canary-main
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-port
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+
+  selector:
+    app: common-video-shorts-canary-main
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: common-video-shorts-canary-main
+  namespace: production
+spec:
+  #minAvailable: 75%
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: common-video-shorts-canary-main
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: common-video-shorts-canary-main
+  namespace: production
+  labels:
+    app: common-video-shorts-canary-main
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: common-video-shorts-canary-main
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
