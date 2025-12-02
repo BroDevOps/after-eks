@@ -1,0 +1,240 @@
+// pipeline {
+//     agent any
+
+//     parameters {
+//         choice(
+//             name: 'Appname',
+//             choices: [
+//                 'common-video-shorts',
+//                 'ustaadtv-admin',
+//                 'ustaadtv-usercontentservice'
+//             ],
+//             description: 'Select the application'
+//         )
+
+//         string(
+//             name: 'Branch',
+//             defaultValue: 'main',
+//             description: 'Git branch to build'
+//         )
+
+//         choice(
+//             name: 'ENV',
+//             choices: ['staging-mumbai', 'production'],
+//             description: 'Select deployment environment'
+//         )
+
+//         choice(
+//             name: 'DEPLOY_TYPE',
+//             choices: ['main', 'canary'],
+//             description: 'Select deployment type (main/canary)'
+//         )
+//     }
+
+//     environment {
+//         JAVA_HOME    = "/usr/lib/jvm/amazon-corretto-21.0.2.14.1-linux-x64"
+//         MAVEN_HOME   = "/usr/local/src/apache-maven-3.9.9"
+//         AWS_CLI_PATH = "/usr/local/bin/aws"
+//     }
+
+//     stages {
+
+//         stage('Set Environment Variables') {
+//             steps {
+//                 script {
+
+//                     // ========================= AWS ENVIRONMENT =========================
+//                     if (params.ENV == "production") {
+//                         env.AWS_CREDENTIALS_ID = "ecr-prod"
+//                         env.AWS_ACCOUNT_ID     = "433333333375"
+//                         env.AWS_REGION         = "ap-south-1"
+//                         env.MANIFEST_BRANCH    = "production"
+//                     } else {
+//                         env.AWS_CREDENTIALS_ID = "awsecr-dev"
+//                         env.AWS_ACCOUNT_ID     = "4333333333333"
+//                         env.AWS_REGION         = "ap-south-1"
+//                         env.MANIFEST_BRANCH    = "staging-mumbai"
+//                     }
+
+//                     // ========================= MANIFEST SELECTION =========================
+//                     if (params.ENV == "staging-mumbai") {
+//                         env.MANIFEST_NAME = "${params.Appname}staging-mumbai.yml"
+//                         env.SERVICE_NAME  = params.Appname
+//                     } 
+//                     else {
+//                         if (params.DEPLOY_TYPE == "main") {
+//                             env.MANIFEST_NAME = "${params.Appname}production.yml"
+//                             env.SERVICE_NAME  = params.Appname
+//                         } else {
+//                             env.MANIFEST_NAME = "${params.Appname}production-canary.yml"
+//                             env.SERVICE_NAME  = "${params.Appname}-canary-main"
+//                         }
+//                     }
+
+//                     // ========================= IMAGE NAMING =========================
+//                     def ts = new Date().format("dd-MM_hh-mm", TimeZone.getTimeZone("IST"))
+//                     env.IMAGE_TAG  = "${BUILD_NUMBER}-${params.Branch}-${params.ENV}-${ts}"
+//                     env.IMAGE_NAME = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${params.Appname}"
+
+//                     echo """
+//                     -------------------------------------------------------------
+//                     APPNAME:         ${params.Appname}
+//                     BRANCH:          ${params.Branch}
+//                     ENVIRONMENT:     ${params.ENV}
+//                     DEPLOY TYPE:     ${params.DEPLOY_TYPE}
+
+//                     SERVICE NAME:    ${env.SERVICE_NAME}
+//                     MANIFEST FILE:   ${env.MANIFEST_NAME}
+//                     MANIFEST BRANCH: ${env.MANIFEST_BRANCH}
+
+//                     IMAGE:           ${env.IMAGE_NAME}:${env.IMAGE_TAG}
+//                     AWS ACCOUNT:     ${env.AWS_ACCOUNT_ID}
+//                     -------------------------------------------------------------
+//                     """
+//                 }
+//             }
+//         }
+
+//         stage('Checkout Code') {
+//             steps {
+//                 script {
+
+//                     cleanWs()
+
+//                     def repoMap = [
+//                         'ustaadtv-userauth'          : 'https://github.com/repo/seekho247-userservice.git',
+//                         'ustaadtv-admin'             : 'https://github.com/repo/seekho247-admin.git',
+//                         'ustaadtv-usercontentservice': 'https://github.com/repo/seekho247-userContentService.git',
+//                         'common-video-shorts'        : 'https://github.com/repo/common-video-shorts.git'
+//                     ]
+
+//                     def repoUrl = repoMap[params.Appname]
+//                     if (!repoUrl) error "Repository not found for ${params.Appname}"
+
+//                     git branch: params.Branch, url: repoUrl
+
+//                     echo "✓ Code checkout complete"
+//                 }
+//             }
+//         }
+
+//         stage('Build Application') {
+//             steps {
+//                 script {
+//                     sh """
+//                         export JAVA_HOME=${JAVA_HOME}
+//                         ${MAVEN_HOME}/bin/mvn clean install -U -DskipTests
+//                     """
+
+//                     def jars = findFiles(glob: 'target/*.jar')
+//                     if (!jars) error "No JAR found in target/"
+
+//                     sh "cp ${jars[0].path} DockerArtifact.jar"
+//                     echo "✓ JAR prepared: ${jars[0].path}"
+//                 }
+//             }
+//         }
+
+//         stage('Verify Dockerfile') {
+//             steps {
+//                 script {
+//                     if (!fileExists("Dockerfile")) error "Dockerfile missing!"
+//                     echo "✓ Dockerfile exists"
+//                 }
+//             }
+//         }
+
+//         stage('Build Docker Image') {
+//             steps {
+//                 script {
+//                     sh "docker build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} ."
+//                     echo "✓ Docker build completed"
+//                 }
+//             }
+//         }
+
+//         stage('Push Docker Image to ECR') {
+//             steps {
+//                 withCredentials([[
+//                     $class: 'AmazonWebServicesCredentialsBinding',
+//                     credentialsId: env.AWS_CREDENTIALS_ID,
+//                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+//                 ]]) {
+
+//                     sh """
+//                         ${AWS_CLI_PATH} ecr get-login-password --region ${env.AWS_REGION} \
+//                           | docker login --username AWS --password-stdin \
+//                             ${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com
+
+//                         docker push ${env.IMAGE_NAME}:${env.IMAGE_TAG}
+//                     """
+
+//                     echo "✓ Docker image pushed"
+//                 }
+//             }
+//         }
+
+//         stage('Update Manifest Repo') {
+//             steps {
+//                 script {
+
+//                     timeout(time: 10, unit: 'MINUTES') {
+
+//                         dir('repo-manifest') {
+
+//                             git branch: env.MANIFEST_BRANCH,
+//                                 credentialsId: 'deeee-user',
+//                                 url: 'https://github.com/repo.git'
+
+//                             withCredentials([gitUsernamePassword(
+//                                 credentialsId: 'deeee-user',
+//                                 gitToolName: 'git-tool'
+//                             )]) {
+
+//                                 sh """
+//                                     set -e
+
+//                                     echo "Pull latest changes..."
+//                                     git pull origin ${env.MANIFEST_BRANCH}
+
+//                                     FILE_NAME="${env.MANIFEST_NAME}"
+
+//                                     echo "Target manifest: \$FILE_NAME"
+
+//                                     if [ ! -f "\$FILE_NAME" ]; then
+//                                         echo "❌ Manifest file not found!"
+//                                         exit 1
+//                                     fi
+
+//                                     echo "Updating image in manifest..."
+//                                     sed -i "s|${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${params.Appname}:.*|${env.IMAGE_NAME}:${env.IMAGE_TAG}|g" "\$FILE_NAME"
+
+//                                     git config user.name "deeee-user"
+//                                     git config user.email "deddedd@gmail.com"
+
+//                                     git add "\$FILE_NAME"
+//                                     git commit -m "Update ${params.Appname} image to ${env.IMAGE_TAG}" || echo "No changes"
+//                                     git push origin ${env.MANIFEST_BRANCH}
+
+//                                     echo "✅ Manifest updated successfully"
+//                                 """
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         success { echo "🎉 Deployment success!" }
+//         failure { echo "❌ Deployment failed" }
+//         cleanup {
+//             sh """
+//                 docker rmi ${env.IMAGE_NAME}:${env.IMAGE_TAG} || true
+//                 docker system prune -f || true
+//             """
+//         }
+//     }
+// }
